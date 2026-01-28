@@ -15,7 +15,8 @@ from yolo_app.tracking import SimpleTracker
 
 def main():
     # Configure logging with both console and file handlers
-    log_dir = Path(__file__).parent
+    log_dir = Path(os.environ.get("LOG_DIR", Path(__file__).parent))
+    log_dir.mkdir(parents=True, exist_ok=True)
     detection_log_file = log_dir / "detections.log"
     
     # Create formatters

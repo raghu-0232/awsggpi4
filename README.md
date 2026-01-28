@@ -31,7 +31,11 @@ That's it! The script will:
 - ✅ Configure environment
 - ✅ Set up and start systemd service
 
-**The app will be running at:** `http://<pi-ip-address>:9090`
+**Outcomes:**
+- **Live stream:** `http://<pi-ip-address>:9090` — web page with MJPEG video; `/video` is the raw stream
+- **Daily CSV:** `detections_YYYY-MM-DD.csv` in project dir — minute-by-minute counts (see [Output files](#output-files))
+- **Detection log:** `detections.log` — real-time Person/Bike/Motorcycle events per ROI
+- **Service logs:** `awsggpi4.log`, `awsggpi4-error.log`
 
 ## Manual Setup (If Needed)
 
@@ -74,13 +78,26 @@ sudo nano /etc/default/awsggpi4
 
 ## Output Files
 
-- **Daily CSV files**: `detections_YYYY-MM-DD.csv` (e.g., `detections_2026-01-28.csv`)
-  - Updated every minute with detection counts
-  - New file created automatically each day
-  - Uses India time (IST) from NTP servers
+All output files are written in the project directory (or `HOURLY_CSV_PATH` parent for CSVs).
 
-- **Detection logs**: `detections.log` - Real-time detection events
-- **Service logs**: `awsggpi4.log` and `awsggpi4-error.log`
+| Output | Description |
+|--------|-------------|
+| **Live stream** | `http://<pi-ip>:9090` — web page; `http://<pi-ip>:9090/video` — MJPEG stream |
+| **Daily CSV** | `detections_YYYY-MM-DD.csv` (e.g. `detections_2026-01-28.csv`) |
+| **Detection log** | `detections.log` — Person / Bike / Motorcycle events in ROI1 and ROI2 |
+| **Service logs** | `awsggpi4.log`, `awsggpi4-error.log` |
+
+**Daily CSV format** (updated every minute, IST from NTP):
+
+| Column | Description |
+|--------|-------------|
+| `time_bucket` | 1‑minute window, e.g. `2026-01-28 14:30:00 - 14:31:00 IST` |
+| `roi1_persons` | Person count in ROI1 |
+| `roi1_two_wheelers` | Bicycle + motorcycle count in ROI1 |
+| `roi2_persons` | Person count in ROI2 |
+| `roi2_two_wheelers` | Bicycle + motorcycle count in ROI2 |
+
+**What’s counted:** Persons (class 0), Bicycles (1), Motorcycles (3) whose center falls inside ROI1 or ROI2.
 
 ## Viewing Data
 
@@ -121,6 +138,15 @@ awsggpi4/
     ├── stream.py          # Flask MJPEG server
     └── tracking.py        # Object tracking
 ```
+
+## Deploy as AWS IoT Greengrass v2 Component
+
+To run awsggpi4 as a **Greengrass v2 component** on a Pi 4 (or Linux aarch64):
+
+1. Build artifact: `./greengrass/build-artifact.sh`
+2. Upload `greengrass/awsggpi4.zip` to S3, update the recipe `Uri`, then create and deploy the component.
+
+See **[GREENGASS_DEPLOY.md](GREENGASS_DEPLOY.md)** for prerequisites, S3 setup, deployment commands, and config overrides.
 
 ## Requirements
 
