@@ -3,6 +3,9 @@ import json
 import os
 from pathlib import Path
 
+# Get project root directory (parent of yolo_app)
+_PROJECT_ROOT = Path(__file__).parent.parent
+
 
 @dataclass(frozen=True)
 class Config:
@@ -73,7 +76,7 @@ class Config:
     def from_env(cls) -> "Config":
         width = int(os.environ.get("FRAME_WIDTH", "1280"))
         height = int(os.environ.get("FRAME_HEIGHT", "720"))
-        roi_config_path = os.environ.get("ROI_CONFIG_PATH", "/home/pi4/YOLO/roi_config.json")
+        roi_config_path = os.environ.get("ROI_CONFIG_PATH", str(_PROJECT_ROOT / "roi_config.json"))
         roi1, roi2 = cls._load_roi_config(roi_config_path, width, height)
         env_roi1 = os.environ.get("ROI1", "")
         env_roi2 = os.environ.get("ROI2", "")
@@ -89,7 +92,7 @@ class Config:
                 "RTSP_URL",
                 "rtsp://user:password@192.168.88.44:554/cam/realmonitor?channel=1&subtype=0",
             ),
-            model_path=os.environ.get("YOLO_MODEL_PATH", "/home/pi4/screenshots/yolov8n.pt"),
+            model_path=os.environ.get("YOLO_MODEL_PATH", str(Path.home() / "models" / "yolov8n.pt")),
             stream_port=int(os.environ.get("STREAM_PORT", "9090")),
             enable_imshow=cls._parse_bool(os.environ.get("ENABLE_IMSHOW", "0")),
             count_class_ids=cls._parse_ids(os.environ.get("COUNT_CLASS_IDS", "0,1,3")),
@@ -97,12 +100,12 @@ class Config:
             track_max_age_seconds=float(os.environ.get("TRACK_MAX_AGE_SECONDS", "5")),
             infer_every_n=int(os.environ.get("INFER_EVERY_N", "1")),
             infer_img_size=int(os.environ.get("INFER_IMG_SIZE", "640")),
-            hourly_csv_path=os.environ.get("HOURLY_CSV_PATH", "/home/pi4/YOLO/hourly_counts.csv"),
+            hourly_csv_path=os.environ.get("HOURLY_CSV_PATH", str(_PROJECT_ROOT / "detections.csv")),
             draw_detections=cls._parse_bool(os.environ.get("DRAW_DETECTIONS", "1")),
             roi1=roi1,
             roi2=roi2,
             roi_config_path=roi_config_path,
-            interval_minutes=int(os.environ.get("COUNT_INTERVAL_MINUTES", "30")),
+            interval_minutes=int(os.environ.get("COUNT_INTERVAL_MINUTES", "1")),
             tz_offset_minutes=int(os.environ.get("TZ_OFFSET_MINUTES", "330")),
         )
 

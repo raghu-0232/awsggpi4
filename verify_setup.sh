@@ -43,7 +43,10 @@ echo ""
 echo "[3/8] Checking environment configuration..."
 if [ -f "/etc/default/awsggpi4" ]; then
     echo "  ✓ Environment config found at /etc/default/awsggpi4"
-    source /etc/default/awsggpi4 2>/dev/null
+    if [ -r /etc/default/awsggpi4 ]; then
+        # shellcheck disable=SC1091
+        . /etc/default/awsggpi4 2>/dev/null || true
+    fi
 else
     echo "  ⚠ Environment config not found. Copy awsggpi4.env.example to /etc/default/awsggpi4"
     WARNINGS=$((WARNINGS + 1))
@@ -52,7 +55,7 @@ fi
 # Check 4: Model file
 echo ""
 echo "[4/8] Checking YOLO model file..."
-MODEL_PATH="${YOLO_MODEL_PATH:-/home/pi4/screenshots/yolov8n.pt}"
+MODEL_PATH="${YOLO_MODEL_PATH:-$(eval echo ~"$(whoami)")/models/yolov8n.pt}"
 if [ -f "$MODEL_PATH" ]; then
     echo "  ✓ Model file found: $MODEL_PATH"
 else
@@ -95,7 +98,7 @@ fi
 echo ""
 echo "[7/8] Checking port availability..."
 PORT="${STREAM_PORT:-9090}"
-if netstat -tln 2>/dev/null | grep -q ":$PORT "; then
+if netstat -tln 2>/dev/null | grep -q ":$PORT " || ss -tln 2>/dev/null | grep -q ":$PORT "; then
     echo "  ⚠ Port $PORT is already in use"
     WARNINGS=$((WARNINGS + 1))
 else

@@ -213,8 +213,17 @@ lib/
 lib64/
 pyvenv.cfg
 *.log
+!detections.log.example
+detections*.csv
 hourly_counts.csv
 roi_config.json
 runs/
 *.pt
 *.onnx
+bin.backup/
+lib.backup/
+include.backup/
+pyvenv.cfg.backup
+share/
+awsggpi4.log
+awsggpi4-error.log

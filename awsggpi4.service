@@ -5,14 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi4
-WorkingDirectory=/home/pi4/awsggpi4
+User=%i
+WorkingDirectory=%h/awsggpi4
 EnvironmentFile=-/etc/default/awsggpi4
-ExecStart=/home/pi4/awsggpi4/bin/python /home/pi4/awsggpi4/objectdetection.py
+ExecStart=%h/awsggpi4/bin/python %h/awsggpi4/objectdetection.py
 Restart=on-failure
 RestartSec=3
-StandardOutput=append:/home/pi4/awsggpi4/awsggpi4.log
-StandardError=append:/home/pi4/awsggpi4/awsggpi4-error.log
+StandardOutput=append:%h/awsggpi4/awsggpi4.log
+StandardError=append:%h/awsggpi4/awsggpi4-error.log
 
 [Install]
 WantedBy=multi-user.target

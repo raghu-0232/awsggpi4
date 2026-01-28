@@ -1,6 +1,7 @@
 import time
 import os
 import logging
+from pathlib import Path
 import cv2
 from ultralytics import YOLO
 
@@ -13,16 +14,47 @@ from yolo_app.tracking import SimpleTracker
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    # Configure logging with both console and file handlers
+    log_dir = Path(__file__).parent
+    detection_log_file = log_dir / "detections.log"
+    
+    # Create formatters
+    detailed_formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    simple_formatter = logging.Formatter(
+        '%(asctime)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    
+    # Console handler (all logs)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(detailed_formatter)
+    root_logger.addHandler(console_handler)
+    
+    # Detection log file handler (detection-specific logs)
+    detection_handler = logging.FileHandler(detection_log_file)
+    detection_handler.setLevel(logging.INFO)
+    detection_handler.setFormatter(simple_formatter)
+    # Only log detection-related messages to this file
+    detection_handler.addFilter(lambda record: 'DETECTION' in record.getMessage() or 'MINUTE_SUMMARY' in record.getMessage())
+    root_logger.addHandler(detection_handler)
+    
     log = logging.getLogger("objectdetection")
 
+    config = None
+    capture_thread = None
+    hourly = None
     config = Config.from_env()
 
-    device = getattr(config, "device", None) or os.environ.get("YOLO_DEVICE", "cpu")
-    log.info("Using device: %s", device)
-
     try:
-        model = YOLO(config.model_path, task="detect", device=device)
+        model = YOLO(config.model_path, task="detect")
     except Exception as e:
         log.exception("Failed to load model %s: %s", config.model_path, e)
         return
@@ -38,16 +70,25 @@ def main():
     annotated_buffer = FrameBuffer()
 
     app = create_app(annotated_buffer.get, running_flag, config.jpeg_quality)
-    start_server(app, config.stream_port)
+    log.info("Starting stream server on port %d", config.stream_port)
+    server_thread = start_server(app, config.stream_port)
+    log.info("Stream server started")
 
-    capture_thread = start_capture(config, capture_buffer, running_flag)
+    log.info("Starting capture...")
+    try:
+        capture_thread = start_capture(config, capture_buffer, running_flag)
+        log.info("Capture thread started, entering main loop...")
+    except Exception as e:
+        log.exception("Failed to start capture thread: %s", e)
+        log.error("Application will continue but no video feed will be available")
+        capture_thread = None
 
     fps = 0.0
     t_start = time.time()
     frame_index = 0
     event_count = 0
     tracker = SimpleTracker(config.track_iou_threshold, config.track_max_age_seconds)
-    hourly = HourlyCounter(config.interval_minutes, config.tz_offset_minutes)
+    hourly = HourlyCounter(config.interval_minutes, config.tz_offset_minutes, config.hourly_csv_path)
 
     def roi_for_detection(bbox):
         x1, y1, x2, y2 = bbox
@@ -63,7 +104,7 @@ def main():
         while True:
             delta_t = time.time() - t_start
             if delta_t > 0:
-                fps = fps * config.fps_smooth + (1.0 - config.fps_smooth) * (1.0 / delta_t)
+                fps = fps * config.fps_smooth + (1.0 - config.fps_smooth) / delta_t
             t_start = time.time()
 
             frame = capture_buffer.get()
@@ -74,13 +115,13 @@ def main():
             frame_index += 1
             if config.infer_every_n > 1 and (frame_index % config.infer_every_n) != 0:
                 annotated = cv2.resize(frame, (config.width, config.height))
+                draw_rois(annotated, config.roi1, config.roi2)
                 draw_hud(annotated, fps, event_count, hourly.roi1_persons + hourly.roi2_persons, hourly.roi1_two_wheelers + hourly.roi2_two_wheelers, config.height)
                 annotated_buffer.set(annotated)
                 continue
 
             results = model(frame, conf=0.25, imgsz=config.infer_img_size, verbose=False)[0]
-
-            hourly.rollover_if_needed(config.hourly_csv_path)
+            hourly.rollover_if_needed()
 
             detections = []
             if hasattr(results, "boxes") and results.boxes is not None:
@@ -100,16 +141,23 @@ def main():
                 if roi == 0:
                     continue
                 event_count += 1
-                if det["cls"] == 0:
+                
+                # Log detection (only for persons and bikes, no garbage)
+                if det["cls"] == 0:  # Person
                     if roi == 1:
                         hourly.roi1_persons += 1
+                        log.info("DETECTION: Person in ROI1 - Total: %d", hourly.roi1_persons)
                     else:
                         hourly.roi2_persons += 1
-                elif det["cls"] in (1, 3):
+                        log.info("DETECTION: Person in ROI2 - Total: %d", hourly.roi2_persons)
+                elif det["cls"] in (1, 3):  # Bicycle (1) or Motorcycle (3)
+                    vehicle_type = "Bike" if det["cls"] == 1 else "Motorcycle"
                     if roi == 1:
                         hourly.roi1_two_wheelers += 1
+                        log.info("DETECTION: %s in ROI1 - Total: %d", vehicle_type, hourly.roi1_two_wheelers)
                     else:
                         hourly.roi2_two_wheelers += 1
+                        log.info("DETECTION: %s in ROI2 - Total: %d", vehicle_type, hourly.roi2_two_wheelers)
 
             annotated = frame.copy()
             if config.draw_detections:
@@ -140,17 +188,19 @@ def main():
         except Exception:
             pass
         try:
-            write_hourly_counts(
-                config.hourly_csv_path,
-                hourly.current_bucket,
-                hourly.roi1_persons,
-                hourly.roi1_two_wheelers,
-                hourly.roi2_persons,
-                hourly.roi2_two_wheelers,
-            )
+            if hourly is not None:
+                hourly._update_csv_path()
+                write_hourly_counts(
+                    str(hourly.current_csv_path),
+                    hourly.current_bucket,
+                    hourly.roi1_persons,
+                    hourly.roi1_two_wheelers,
+                    hourly.roi2_persons,
+                    hourly.roi2_two_wheelers,
+                )
         except Exception as e:
             log.exception("Failed to write hourly counts: %s", e)
-        if config.enable_imshow:
+        if config is not None and config.enable_imshow:
             cv2.destroyAllWindows()
 
 
