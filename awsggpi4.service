@@ -1,0 +1,18 @@
+[Unit]
+Description=YOLO Object Detection Stream (awsggpi4)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi4
+WorkingDirectory=/home/pi4/awsggpi4
+EnvironmentFile=-/etc/default/awsggpi4
+ExecStart=/home/pi4/awsggpi4/bin/python /home/pi4/awsggpi4/objectdetection.py
+Restart=on-failure
+RestartSec=3
+StandardOutput=append:/home/pi4/awsggpi4/awsggpi4.log
+StandardError=append:/home/pi4/awsggpi4/awsggpi4-error.log
+
+[Install]
+WantedBy=multi-user.target

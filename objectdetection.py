@@ -74,33 +74,11 @@ def main():
             frame_index += 1
             if config.infer_every_n > 1 and (frame_index % config.infer_every_n) != 0:
                 annotated = cv2.resize(frame, (config.width, config.height))
-                draw_hud(annotated, fps, event_count, hourly.persons, hourly.two_wheelers, config.height)
+                draw_hud(annotated, fps, event_count, hourly.roi1_persons + hourly.roi2_persons, hourly.roi1_two_wheelers + hourly.roi2_two_wheelers, config.height)
                 annotated_buffer.set(annotated)
                 continue
 
-            # Preprocess: convert BGR->RGB (safer) and optionally resize to reduce CPU load
-            try:
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            except Exception:
-                rgb = frame  # fallback if conversion fails
-
-            # Optionally downscale prior to inference to speed up on Pi
-            try:
-                if isinstance(config.infer_img_size, int):
-                    infer_img = cv2.resize(rgb, (config.infer_img_size, config.infer_img_size))
-                else:
-                    infer_img = rgb
-            except Exception:
-                infer_img = rgb
-
-            try:
-                results = model(infer_img, conf=getattr(config, "confidence", 0.25), imgsz=config.infer_img_size, verbose=False)[0]
-            except Exception as e:
-                log.exception("Model inference failed: %s", e)
-                annotated = cv2.resize(frame, (config.width, config.height))
-                draw_hud(annotated, fps, event_count, hourly.persons, hourly.two_wheelers, config.height)
-                annotated_buffer.set(annotated)
-                continue
+            results = model(frame, conf=0.25, imgsz=config.infer_img_size, verbose=False)[0]
 
             hourly.rollover_if_needed(config.hourly_csv_path)
 
@@ -111,12 +89,9 @@ def main():
                         cls_id = int(box.cls[0])
                     except Exception:
                         cls_id = int(box.cls)
-                    if getattr(config, "count_class_ids", None) and cls_id not in config.count_class_ids:
+                    if config.count_class_ids and cls_id not in config.count_class_ids:
                         continue
-                    try:
-                        xyxy = box.xyxy[0].tolist()
-                    except Exception:
-                        xyxy = list(map(float, box.xyxy))
+                    xyxy = box.xyxy[0].tolist()
                     detections.append({"bbox": xyxy, "cls": cls_id})
 
             new_detections = tracker.update(detections, time.time())
@@ -151,7 +126,7 @@ def main():
             )
             annotated_buffer.set(annotated)
 
-            if getattr(config, "enable_imshow", False):
+            if config.enable_imshow:
                 cv2.imshow("IP Camera", annotated)
                 if cv2.waitKey(1) == ord("q"):
                     break
@@ -167,7 +142,7 @@ def main():
         try:
             write_hourly_counts(
                 config.hourly_csv_path,
-                hourly.current_hour,
+                hourly.current_bucket,
                 hourly.roi1_persons,
                 hourly.roi1_two_wheelers,
                 hourly.roi2_persons,
@@ -175,7 +150,7 @@ def main():
             )
         except Exception as e:
             log.exception("Failed to write hourly counts: %s", e)
-        if getattr(config, "enable_imshow", False):
+        if config.enable_imshow:
             cv2.destroyAllWindows()
 
 
