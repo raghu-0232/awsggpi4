@@ -1,4 +1,6 @@
 import time
+import os
+import logging
 import cv2
 from ultralytics import YOLO
 
@@ -11,8 +13,20 @@ from yolo_app.tracking import SimpleTracker
 
 
 def main():
+    logging.basicConfig(level=logging.INFO)
+    log = logging.getLogger("objectdetection")
+
     config = Config.from_env()
-    model = YOLO(config.model_path, task="detect")
+
+    device = getattr(config, "device", None) or os.environ.get("YOLO_DEVICE", "cpu")
+    log.info("Using device: %s", device)
+
+    try:
+        model = YOLO(config.model_path, task="detect", device=device)
+    except Exception as e:
+        log.exception("Failed to load model %s: %s", config.model_path, e)
+        return
+
     names = getattr(model, "names", {})
 
     running = True
@@ -49,7 +63,7 @@ def main():
         while True:
             delta_t = time.time() - t_start
             if delta_t > 0:
-                fps = fps * config.fps_smooth + (1.0 - config.fps_smooth) / delta_t
+                fps = fps * config.fps_smooth + (1.0 - config.fps_smooth) * (1.0 / delta_t)
             t_start = time.time()
 
             frame = capture_buffer.get()
@@ -64,7 +78,30 @@ def main():
                 annotated_buffer.set(annotated)
                 continue
 
-            results = model(frame, conf=0.25, imgsz=config.infer_img_size, verbose=False)[0]
+            # Preprocess: convert BGR->RGB (safer) and optionally resize to reduce CPU load
+            try:
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            except Exception:
+                rgb = frame  # fallback if conversion fails
+
+            # Optionally downscale prior to inference to speed up on Pi
+            try:
+                if isinstance(config.infer_img_size, int):
+                    infer_img = cv2.resize(rgb, (config.infer_img_size, config.infer_img_size))
+                else:
+                    infer_img = rgb
+            except Exception:
+                infer_img = rgb
+
+            try:
+                results = model(infer_img, conf=getattr(config, "confidence", 0.25), imgsz=config.infer_img_size, verbose=False)[0]
+            except Exception as e:
+                log.exception("Model inference failed: %s", e)
+                annotated = cv2.resize(frame, (config.width, config.height))
+                draw_hud(annotated, fps, event_count, hourly.persons, hourly.two_wheelers, config.height)
+                annotated_buffer.set(annotated)
+                continue
+
             hourly.rollover_if_needed(config.hourly_csv_path)
 
             detections = []
@@ -74,9 +111,12 @@ def main():
                         cls_id = int(box.cls[0])
                     except Exception:
                         cls_id = int(box.cls)
-                    if config.count_class_ids and cls_id not in config.count_class_ids:
+                    if getattr(config, "count_class_ids", None) and cls_id not in config.count_class_ids:
                         continue
-                    xyxy = box.xyxy[0].tolist()
+                    try:
+                        xyxy = box.xyxy[0].tolist()
+                    except Exception:
+                        xyxy = list(map(float, box.xyxy))
                     detections.append({"bbox": xyxy, "cls": cls_id})
 
             new_detections = tracker.update(detections, time.time())
@@ -111,27 +151,33 @@ def main():
             )
             annotated_buffer.set(annotated)
 
-            if config.enable_imshow:
+            if getattr(config, "enable_imshow", False):
                 cv2.imshow("IP Camera", annotated)
                 if cv2.waitKey(1) == ord("q"):
                     break
     except KeyboardInterrupt:
-        pass
+        log.info("Interrupted by user")
     finally:
         running = False
-        capture_thread.join(timeout=2)
-        write_hourly_counts(
-            config.hourly_csv_path,
-            hourly.current_hour,
-            hourly.roi1_persons,
-            hourly.roi1_two_wheelers,
-            hourly.roi2_persons,
-            hourly.roi2_two_wheelers,
-        )
-        if config.enable_imshow:
+        try:
+            if capture_thread is not None:
+                capture_thread.join(timeout=2)
+        except Exception:
+            pass
+        try:
+            write_hourly_counts(
+                config.hourly_csv_path,
+                hourly.current_hour,
+                hourly.roi1_persons,
+                hourly.roi1_two_wheelers,
+                hourly.roi2_persons,
+                hourly.roi2_two_wheelers,
+            )
+        except Exception as e:
+            log.exception("Failed to write hourly counts: %s", e)
+        if getattr(config, "enable_imshow", False):
             cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
     main()
-
