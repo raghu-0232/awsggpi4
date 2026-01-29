@@ -1,7 +1,7 @@
 RecipeFormatVersion: '2020-01-25'
 ComponentName: com.example.awsggpi4
-ComponentVersion: '1.0.0'
-ComponentDescription: YOLO object detection on Raspberry Pi 4 - person/vehicle counting, MJPEG stream, daily CSV logging.
+ComponentVersion: '1.0.1'
+ComponentDescription: YOLO object detection on Raspberry Pi 4 - person/vehicle counting, MJPEG stream, daily CSV logging, S3 upload.
 ComponentPublisher: awsggpi4
 
 ComponentConfiguration:
@@ -27,13 +27,16 @@ ComponentConfiguration:
     LOG_DIR: ''
     ENABLE_IMSHOW: '0'
     JPEG_QUALITY: '85'
+    S3_BUCKET: ''
+    S3_PREFIX: 'detections/'
+    AWS_REGION: 'ap-south-1'
 
 Manifests:
   - Platform:
       os: linux
       architecture: aarch64
     Artifacts:
-      - Uri: 's3://BUCKET_NAME/PREFIX/awsggpi4.zip'
+      - Uri: 's3://lassi-shop-iot/components/awsggpi4/awsggpi4.zip'
         Unarchive: ZIP
         Permission:
           Read: ALL
@@ -48,9 +51,9 @@ Manifests:
             libjpeg-dev libpng-dev curl
           python3 -m venv --system-site-packages {work:path}/venv
           {work:path}/venv/bin/pip install --upgrade pip setuptools wheel
-          {work:path}/venv/bin/pip install -r {artifacts:decompressedPath}/awsggpi4/requirements.txt
+          {work:path}/venv/bin/pip install -r {artifacts:decompressedPath}/awsggpi4/awsggpi4/requirements.txt
           mkdir -p {work:path}/models
-          cp -n {artifacts:decompressedPath}/awsggpi4/roi_config.json.example {work:path}/roi_config.json || true
+          cp -n {artifacts:decompressedPath}/awsggpi4/awsggpi4/roi_config.json.example {work:path}/roi_config.json || true
           if [ ! -f {work:path}/models/yolov8n.pt ]; then
             (curl -sSL -o {work:path}/models/yolov8n.pt "https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.pt" || \
              wget -q -O {work:path}/models/yolov8n.pt "https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.pt") || true
@@ -84,6 +87,6 @@ Manifests:
           [ -z "$HOURLY_CSV_PATH" ] && export HOURLY_CSV_PATH="{work:path}/detections.csv"
           [ -z "$ROI_CONFIG_PATH" ] && export ROI_CONFIG_PATH="{work:path}/roi_config.json"
           [ -z "$LOG_DIR" ] && export LOG_DIR="{work:path}"
-          cd {artifacts:decompressedPath}/awsggpi4 && exec {work:path}/venv/bin/python -u objectdetection.py
+          cd {artifacts:decompressedPath}/awsggpi4/awsggpi4 && exec {work:path}/venv/bin/python -u objectdetection.py
         Setenv:
           PYTHONUNBUFFERED: '1'

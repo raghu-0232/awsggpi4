@@ -107,5 +107,8 @@ class Config:
             roi_config_path=roi_config_path,
             interval_minutes=int(os.environ.get("COUNT_INTERVAL_MINUTES", "1")),
             tz_offset_minutes=int(os.environ.get("TZ_OFFSET_MINUTES", "330")),
+            s3_bucket=os.environ.get("S3_BUCKET", ""),
+            s3_prefix=os.environ.get("S3_PREFIX", "detections/"),
+            aws_region=os.environ.get("AWS_REGION", "ap-south-1"),
         )
 

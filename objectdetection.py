@@ -11,6 +11,7 @@ from yolo_app.draw import draw_detections, draw_hud, draw_rois
 from yolo_app.hourly import HourlyCounter, write_hourly_counts
 from yolo_app.stream import create_app, start_server
 from yolo_app.tracking import SimpleTracker
+from yolo_app.s3_uploader import S3Uploader
 
 
 def main():
@@ -90,6 +91,8 @@ def main():
     event_count = 0
     tracker = SimpleTracker(config.track_iou_threshold, config.track_max_age_seconds)
     hourly = HourlyCounter(config.interval_minutes, config.tz_offset_minutes, config.hourly_csv_path)
+    s3_uploader = S3Uploader(config.hourly_csv_path, config.s3_bucket, config.s3_prefix, 
+                             config.aws_region, config.tz_offset_minutes) if config.s3_bucket else None
 
     def roi_for_detection(bbox):
         x1, y1, x2, y2 = bbox
@@ -123,6 +126,10 @@ def main():
 
             results = model(frame, conf=0.25, imgsz=config.infer_img_size, verbose=False)[0]
             hourly.rollover_if_needed()
+            
+            # Check and upload previous day's CSV to S3 (runs once per day after midnight)
+            if s3_uploader:
+                s3_uploader.upload_previous_day_csv()
 
             detections = []
             if hasattr(results, "boxes") and results.boxes is not None:
