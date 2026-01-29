@@ -1,6 +1,7 @@
 RecipeFormatVersion: '2020-01-25'
 ComponentName: com.example.awsggpi4
-ComponentVersion: '1.0.1'
+ComponentVersion: '1.0.8'
+ComponentType: aws.greengrass.generic
 ComponentDescription: YOLO object detection on Raspberry Pi 4 - person/vehicle counting, MJPEG stream, daily CSV logging, S3 upload.
 ComponentPublisher: awsggpi4
 
@@ -27,7 +28,7 @@ ComponentConfiguration:
     LOG_DIR: ''
     ENABLE_IMSHOW: '0'
     JPEG_QUALITY: '85'
-    S3_BUCKET: ''
+    S3_BUCKET: 'lassi-shop-iot'
     S3_PREFIX: 'detections/'
     AWS_REGION: 'ap-south-1'
 
@@ -83,6 +84,9 @@ Manifests:
           export HOURLY_CSV_PATH="{configuration:/HOURLY_CSV_PATH}"
           export ROI_CONFIG_PATH="{configuration:/ROI_CONFIG_PATH}"
           export LOG_DIR="{configuration:/LOG_DIR}"
+          export S3_BUCKET="{configuration:/S3_BUCKET}"
+          export S3_PREFIX="{configuration:/S3_PREFIX}"
+          export AWS_REGION="{configuration:/AWS_REGION}"
           [ -z "$YOLO_MODEL_PATH" ] && export YOLO_MODEL_PATH="{work:path}/models/yolov8n.pt"
           [ -z "$HOURLY_CSV_PATH" ] && export HOURLY_CSV_PATH="{work:path}/detections.csv"
           [ -z "$ROI_CONFIG_PATH" ] && export ROI_CONFIG_PATH="{work:path}/roi_config.json"

@@ -30,6 +30,9 @@ class Config:
     tz_offset_minutes: int
     jpeg_quality: int = 85
     fps_smooth: float = 0.9
+    s3_bucket: str = ""
+    s3_prefix: str = "detections/"
+    aws_region: str = "ap-south-1"
 
     @staticmethod
     def _parse_bool(value: str, default: bool = False) -> bool:
